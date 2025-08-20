@@ -32,6 +32,22 @@ MARGIN = int(16 * MM_TO_INCH * DPI)
 # Basisverzeichnis (funktioniert in Pythonista, Skript und REPL)
 BASE_DIR = os.path.dirname(__file__) if '__file__' in globals() else os.getcwd()
 
+# Erweiterte Einstellungen
+# - Einzelkarten (eine pro Seite) erzeugen und optional in Foto-Galerie speichern
+GENERATE_SINGLE = True
+SAVE_SINGLES_TO_PHOTOS = True   # wirkt nur, wenn Pythonista/"photos" verfügbar ist
+
+# - Druckbögen erzeugen (mehrere Karten pro Seite)
+GENERATE_SHEETS = True
+SHEET_GRID_COLS = 2
+SHEET_GRID_ROWS = 2
+SHEET_CELL_MARGIN = int(5 * MM_TO_INCH * DPI)   # Innenabstand pro Zelle
+SHEET_PAGE_SIZE = IMG_SIZE  # für Konsistenz: gleiche Seitengröße wie Einzelkarten
+
+# Unterordner für getrennte Speicherung
+SINGLE_SUBDIR = 'single'
+SHEETS_SUBDIR = 'sheets'
+
 # ====== Utilities ======
 def sanitize_text(s):
     if not s: return s
@@ -261,6 +277,38 @@ def render_back(struct, idx, fonts):
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
     return img
 
+def compose_sheet(images, page_size, grid_cols, grid_rows, cell_margin, footer_text=None, fonts=None):
+    # images: list of PIL Images (already rendered single-card images)
+    page = Image.new('RGB', page_size, 'white')
+    draw = ImageDraw.Draw(page)
+    cell_w = page_size[0] // grid_cols
+    cell_h = page_size[1] // grid_rows
+    for idx, img in enumerate(images):
+        if idx >= grid_cols * grid_rows:
+            break
+        col = idx % grid_cols
+        row = idx // grid_cols
+        x0 = col * cell_w + cell_margin
+        y0 = row * cell_h + cell_margin
+        x1 = (col+1) * cell_w - cell_margin
+        y1 = (row+1) * cell_h - cell_margin
+        # Fit image into cell keeping aspect ratio
+        target_w = max(1, x1 - x0)
+        target_h = max(1, y1 - y0)
+        src_w, src_h = img.size
+        scale = min(target_w / src_w, target_h / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        off_x = x0 + (target_w - new_w)//2
+        off_y = y0 + (target_h - new_h)//2
+        page.paste(resized, (off_x, off_y))
+    if footer_text and fonts:
+        _, _, small_font = fonts
+        w, h = measure_text(draw, footer_text, small_font)
+        draw.text((page_size[0]-MARGIN-w, page_size[1]-MARGIN-h), footer_text, font=small_font, fill=(120,120,120))
+    return page
+
 # ====== Main ======
 def main():
     print('Start...')
@@ -270,6 +318,13 @@ def main():
     if not os.path.exists(input_path):
         print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen. Pfad versucht:', input_path); return
     os.makedirs(output_dir, exist_ok=True)
+    # Separate Ausgabeverzeichnisse
+    single_dir = os.path.join(output_dir, SINGLE_SUBDIR)
+    sheets_dir = os.path.join(output_dir, SHEETS_SUBDIR)
+    if GENERATE_SINGLE:
+        os.makedirs(single_dir, exist_ok=True)
+    if GENERATE_SHEETS:
+        os.makedirs(sheets_dir, exist_ok=True)
     if not PIL_AVAILABLE:
         print('Pillow nicht verfügbar. Bitte Pillow in Pythonista installieren.'); return
 
@@ -292,21 +347,28 @@ def main():
     fonts = (tt_title, tt_body, tt_small)
 
     saved = 0
+    sheet_images_front = []
+    sheet_images_back = []
     for i, (front_raw, back_raw) in enumerate(cards, start=1):
         front = parse_card_html_like(front_raw)
         back  = parse_card_html_like(back_raw)
-        print(f'Karte {i}: title_front_len={len(front["title"])}, bullets={len(front["bullets"])}, paras_front={len(front["paragraphs"])}, title_back_len={len(back["title"])}, paras_back={len(back["paragraphs"])}')
+        print(f'Karte {i}: title_front_len={len(front["title"])}, bullets={len(front["bullets"])}, paras_front={len(front["paragraphs"])}, title_back_len={len(back["title"])}, paras_back={len(back["paragraphs"])})')
 
         try:
             img_f = render_front(front, i, fonts)
         except Exception as e:
             print('Fehler Front render:', e); continue
         try:
-            if UI_AVAILABLE:
-                buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
-            else:
-                p = os.path.join(output_dir, f'card_{i:02d}_front.png'); img_f.save(p); print('Saved',p)
-            saved += 1
+            # Einzelkarte Front
+            if GENERATE_SINGLE:
+                if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
+                    buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    print('Saved to Photos (front)', i)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_front.png'); img_f.save(p_single); print('Saved', p_single)
+                saved += 1
+            # Für Druckbogen sammeln
+            if GENERATE_SHEETS:
+                sheet_images_front.append(img_f)
         except Exception as e:
             print('Fehler speichern front:', e)
 
@@ -315,13 +377,45 @@ def main():
         except Exception as e:
             print('Fehler Back render:', e); continue
         try:
-            if UI_AVAILABLE:
-                buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
-            else:
-                p = os.path.join(output_dir, f'card_{i:02d}_back.png'); img_b.save(p); print('Saved',p)
-            saved += 1
+            # Einzelkarte Back
+            if GENERATE_SINGLE:
+                if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
+                    buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    print('Saved to Photos (back)', i)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_back.png'); img_b.save(p_single); print('Saved', p_single)
+                saved += 1
+            # Für Druckbogen sammeln
+            if GENERATE_SHEETS:
+                sheet_images_back.append(img_b)
         except Exception as e:
             print('Fehler speichern back:', e)
+
+    # Druckbögen generieren
+    if GENERATE_SHEETS:
+        cards_per_sheet = SHEET_GRID_COLS * SHEET_GRID_ROWS
+        def chunks(lst, n):
+            for k in range(0, len(lst), n):
+                yield lst[k:k+n]
+        page_idx = 1
+        for batch in chunks(sheet_images_front, cards_per_sheet):
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Front {page_idx}', fonts=fonts)
+            out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_front.png')
+            try:
+                page.save(out_path)
+                print('Saved', out_path)
+            except Exception as e:
+                print('Fehler speichern sheet front:', e)
+            page_idx += 1
+        page_idx = 1
+        for batch in chunks(sheet_images_back, cards_per_sheet):
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Back {page_idx}', fonts=fonts)
+            out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_back.png')
+            try:
+                page.save(out_path)
+                print('Saved', out_path)
+            except Exception as e:
+                print('Fehler speichern sheet back:', e)
+            page_idx += 1
 
     print('Fertig. Bilder erzeugt/gespeichert:', saved)
 
