@@ -29,6 +29,25 @@ A4_H_PX = int(210 * MM_TO_INCH * DPI)
 IMG_SIZE = (A4_W_PX, A4_H_PX)
 MARGIN = int(16 * MM_TO_INCH * DPI)
 
+# Basisverzeichnis (funktioniert in Pythonista, Skript und REPL)
+BASE_DIR = os.path.dirname(__file__) if '__file__' in globals() else os.getcwd()
+
+# Erweiterte Einstellungen
+# - Einzelkarten (eine pro Seite) erzeugen und optional in Foto-Galerie speichern
+GENERATE_SINGLE = True
+SAVE_SINGLES_TO_PHOTOS = True   # wirkt nur, wenn Pythonista/"photos" verfügbar ist
+
+# - Druckbögen erzeugen (mehrere Karten pro Seite)
+GENERATE_SHEETS = True
+SHEET_GRID_COLS = 2
+SHEET_GRID_ROWS = 2
+SHEET_CELL_MARGIN = int(5 * MM_TO_INCH * DPI)   # Innenabstand pro Zelle
+SHEET_PAGE_SIZE = IMG_SIZE  # für Konsistenz: gleiche Seitengröße wie Einzelkarten
+
+# Unterordner für getrennte Speicherung
+SINGLE_SUBDIR = 'single'
+SHEETS_SUBDIR = 'sheets'
+
 # ====== Utilities ======
 def sanitize_text(s):
     if not s: return s
@@ -73,18 +92,30 @@ def extract_front_back(block):
 def parse_card_html_like(text):
     if not text: return {'title':'', 'bullets':[], 'paragraphs':[]}
     t = text.replace('\r\n','\n').replace('\r','\n')
+    # ersetze <br> zu Zeilenumbrüchen vor dem Tag-Strip
+    t = re.sub(r'(?is)<br\s*/?>', '\n', t)
     t = sanitize_text(t)
     title = ''
     bullets = []
     paras = []
     m = re.search(r'(?is)<h4[^>]*>(.*?)</h4>', t)
-    if m: title = strip_tags(m.group(1))
-    m2 = re.search(r'(?is)<ol[^>]*>(.*?)</ol>', t)
-    if m2:
-        items = re.findall(r'(?is)<li[^>]*>(.*?)</li>', m2.group(1))
-        bullets = [strip_tags(it) for it in items]
+    if m:
+        title = strip_tags(m.group(1))
+    # Sammle OL/UL Listenpunkte
+    lists_content = re.findall(r'(?is)<ol[^>]*>(.*?)</ol>|<ul[^>]*>(.*?)</ul>', t)
+    for ol_content, ul_content in lists_content:
+        content = ol_content if ol_content is not None and ol_content != '' else ul_content
+        if content:
+            items = re.findall(r'(?is)<li[^>]*>(.*?)</li>', content)
+            for it in items:
+                bullets.append(strip_tags(it))
+    # Paragraphen sammeln (jeder <p> kann \n enthalten, diese als einzelne Zeilen behandeln)
     paras_raw = re.findall(r'(?is)<p[^>]*>(.*?)</p>', t)
-    paras = [strip_tags(p) for p in paras_raw]
+    tmp = []
+    for p in paras_raw:
+        stripped = strip_tags(p)
+        tmp.extend([ln.strip() for ln in stripped.split('\n') if ln.strip()])
+    paras = tmp
     if not title and not bullets and not paras:
         plain = strip_tags(t)
         parts = [p.strip() for p in re.split(r'\n\s*\n', plain) if p.strip()]
@@ -96,6 +127,17 @@ def parse_card_html_like(text):
                 paras = parts
         else:
             paras = [plain]
+    # Markdown/Plaintext Bullets als Fallback erkennen, falls noch keine bullets
+    if not bullets:
+        lines = [ln for para in paras for ln in para.split('\n') if ln.strip()]
+        md_bullets = []
+        for ln in lines:
+            mdb = re.match(r'^\s*([-*•]|\d+[\.)])\s+(.*)$', ln)
+            if mdb:
+                md_bullets.append(mdb.group(2).strip())
+        if len(md_bullets) >= 2:
+            bullets = md_bullets
+            paras = []
     title = sanitize_text(strip_tags(title))
     bullets = [sanitize_text(b) for b in bullets]
     paras = [sanitize_text(p) for p in paras]
@@ -112,8 +154,22 @@ def load_truetype_or_none(size):
                 return ImageFont.truetype(p, size)
             except Exception as e:
                 print('TTF konnte nicht geladen werden von', p, 'Fehler:', e)
-    # try common system paths
-    candidates = ['/System/Library/Fonts/Helvetica.ttc','/System/Library/Fonts/HelveticaNeue.ttc','/Library/Fonts/Arial.ttf']
+    # try common system paths (macOS, Windows, Linux)
+    candidates = [
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/System/Library/Fonts/HelveticaNeue.ttc',
+        '/Library/Fonts/Arial.ttf',
+        'C:\\Windows\\Fonts\\arial.ttf',
+        'C:\\Windows\\Fonts\\Arial.ttf',
+        'C:\\Windows\\Fonts\\SegoeUI.ttf',
+        'C:\\Windows\\Fonts\\Tahoma.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Book.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+    ]
     for c in candidates:
         try:
             if os.path.exists(c):
@@ -123,6 +179,16 @@ def load_truetype_or_none(size):
     # not available -> return None
     return None
 
+def measure_text(draw, text, font):
+    try:
+        bbox = draw.textbbox((0,0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    except Exception:
+        try:
+            return draw.textsize(text, font=font)
+        except Exception:
+            return (len(text) * (getattr(font, 'size', 10)), getattr(font, 'size', 10))
+
 def wrap_by_width(draw, text, font, max_w):
     words = text.split()
     if not words: return ['']
@@ -130,13 +196,12 @@ def wrap_by_width(draw, text, font, max_w):
     cur = words[0]
     for w in words[1:]:
         test = cur + ' ' + w
-        try:
-            w_px = draw.textbbox((0,0), test, font=font)[2]
-        except Exception:
-            w_px = draw.textsize(test, font=font)[0]
-        if w_px <= max_w: cur = test
+        w_px, _ = measure_text(draw, test, font)
+        if w_px <= max_w:
+            cur = test
         else:
-            lines.append(cur); cur = w
+            lines.append(cur)
+            cur = w
     lines.append(cur)
     return lines
 
@@ -149,9 +214,9 @@ def render_front(struct, idx, fonts):
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
         for ln in lines:
-            w = draw.textbbox((0,0), ln, font=title_font)[2]
+            w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(draw.textbbox((0,0), ln, font=title_font)[3] * 1.1)
+            y += int(h * 1.1)
         y += 20
     if struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
@@ -160,18 +225,19 @@ def render_front(struct, idx, fonts):
             for j, ln in enumerate(wrapped):
                 txt = prefix + ln if j==0 else ' ' * len(prefix) + ln
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), txt, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, txt, body_font)
+                y += int(h * 1.2)
             y += 12
     else:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), ln, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, ln, body_font)
+                y += int(h * 1.2)
             y += 18
     footer = f'Karte {idx} - Front'
-    fw = draw.textbbox((0,0), footer, font=small_font)[2]
-    fh = draw.textbbox((0,0), footer, font=small_font)[3]
+    fw, fh = measure_text(draw, footer, small_font)
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
     return img
 
@@ -183,16 +249,17 @@ def render_back(struct, idx, fonts):
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
         for ln in lines:
-            w = draw.textbbox((0,0), ln, font=title_font)[2]
+            w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(draw.textbbox((0,0), ln, font=title_font)[3] * 1.1)
+            y += int(h * 1.1)
         y += 18
     if struct['paragraphs']:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), ln, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, ln, body_font)
+                y += int(h * 1.2)
             y += 18
     elif struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
@@ -200,25 +267,68 @@ def render_back(struct, idx, fonts):
             for j, ln in enumerate(wrapped):
                 txt = (f'{i}. ' + ln) if j==0 else (' ' * 4 + ln)
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), txt, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, txt, body_font)
+                y += int(h * 1.2)
             y += 12
     else:
         draw.text((x, y+40), "(keine Erklärung gefunden)", font=body_font, fill=(160,160,160))
     footer = f'Karte {idx} - Back'
-    fw = draw.textbbox((0,0), footer, font=small_font)[2]
-    fh = draw.textbbox((0,0), footer, font=small_font)[3]
+    fw, fh = measure_text(draw, footer, small_font)
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
     return img
+
+def compose_sheet(images, page_size, grid_cols, grid_rows, cell_margin, footer_text=None, fonts=None):
+    # images: list of PIL Images (already rendered single-card images)
+    page = Image.new('RGB', page_size, 'white')
+    draw = ImageDraw.Draw(page)
+    cell_w = page_size[0] // grid_cols
+    cell_h = page_size[1] // grid_rows
+    for idx, img in enumerate(images):
+        if idx >= grid_cols * grid_rows:
+            break
+        col = idx % grid_cols
+        row = idx // grid_cols
+        x0 = col * cell_w + cell_margin
+        y0 = row * cell_h + cell_margin
+        x1 = (col+1) * cell_w - cell_margin
+        y1 = (row+1) * cell_h - cell_margin
+        # Fit image into cell keeping aspect ratio
+        target_w = max(1, x1 - x0)
+        target_h = max(1, y1 - y0)
+        src_w, src_h = img.size
+        scale = min(target_w / src_w, target_h / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        off_x = x0 + (target_w - new_w)//2
+        off_y = y0 + (target_h - new_h)//2
+        page.paste(resized, (off_x, off_y))
+    if footer_text and fonts:
+        _, _, small_font = fonts
+        w, h = measure_text(draw, footer_text, small_font)
+        draw.text((page_size[0]-MARGIN-w, page_size[1]-MARGIN-h), footer_text, font=small_font, fill=(120,120,120))
+    return page
 
 # ====== Main ======
 def main():
     print('Start...')
-    if not os.path.exists(INPUT_FILE):
-        print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen.'); return
+    # Pfade robust auflösen
+    input_path = INPUT_FILE if os.path.isabs(INPUT_FILE) else os.path.join(BASE_DIR, INPUT_FILE)
+    output_dir = OUTPUT_FOLDER if os.path.isabs(OUTPUT_FOLDER) else os.path.join(BASE_DIR, OUTPUT_FOLDER)
+    if not os.path.exists(input_path):
+        print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen. Pfad versucht:', input_path); return
+    os.makedirs(output_dir, exist_ok=True)
+    # Separate Ausgabeverzeichnisse
+    single_dir = os.path.join(output_dir, SINGLE_SUBDIR)
+    sheets_dir = os.path.join(output_dir, SHEETS_SUBDIR)
+    if GENERATE_SINGLE:
+        os.makedirs(single_dir, exist_ok=True)
+    if GENERATE_SHEETS:
+        os.makedirs(sheets_dir, exist_ok=True)
     if not PIL_AVAILABLE:
         print('Pillow nicht verfügbar. Bitte Pillow in Pythonista installieren.'); return
 
-    raw = read_raw(INPUT_FILE)
+    raw = read_raw(input_path)
     blocks = split_blocks(raw)
     cards = [extract_front_back(b) for b in blocks]
     print('Gefundene Karten:', len(cards))
@@ -237,21 +347,28 @@ def main():
     fonts = (tt_title, tt_body, tt_small)
 
     saved = 0
+    sheet_images_front = []
+    sheet_images_back = []
     for i, (front_raw, back_raw) in enumerate(cards, start=1):
         front = parse_card_html_like(front_raw)
         back  = parse_card_html_like(back_raw)
-        print(f'Karte {i}: title_front_len={len(front["title"])}, bullets={len(front["bullets"])}, paras_front={len(front["paragraphs"])}, title_back_len={len(back["title"])}, paras_back={len(back["paragraphs"])}')
+        print(f'Karte {i}: title_front_len={len(front["title"])}, bullets={len(front["bullets"])}, paras_front={len(front["paragraphs"])}, title_back_len={len(back["title"])}, paras_back={len(back["paragraphs"])})')
 
         try:
             img_f = render_front(front, i, fonts)
         except Exception as e:
             print('Fehler Front render:', e); continue
         try:
-            if UI_AVAILABLE:
-                buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
-            else:
-                p = os.path.join(OUTPUT_FOLDER, f'card_{i:02d}_front.png'); img_f.save(p); print('Saved',p)
-            saved += 1
+            # Einzelkarte Front
+            if GENERATE_SINGLE:
+                if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
+                    buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    print('Saved to Photos (front)', i)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_front.png'); img_f.save(p_single); print('Saved', p_single)
+                saved += 1
+            # Für Druckbogen sammeln
+            if GENERATE_SHEETS:
+                sheet_images_front.append(img_f)
         except Exception as e:
             print('Fehler speichern front:', e)
 
@@ -260,13 +377,45 @@ def main():
         except Exception as e:
             print('Fehler Back render:', e); continue
         try:
-            if UI_AVAILABLE:
-                buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
-            else:
-                p = os.path.join(OUTPUT_FOLDER, f'card_{i:02d}_back.png'); img_b.save(p); print('Saved',p)
-            saved += 1
+            # Einzelkarte Back
+            if GENERATE_SINGLE:
+                if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
+                    buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    print('Saved to Photos (back)', i)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_back.png'); img_b.save(p_single); print('Saved', p_single)
+                saved += 1
+            # Für Druckbogen sammeln
+            if GENERATE_SHEETS:
+                sheet_images_back.append(img_b)
         except Exception as e:
             print('Fehler speichern back:', e)
+
+    # Druckbögen generieren
+    if GENERATE_SHEETS:
+        cards_per_sheet = SHEET_GRID_COLS * SHEET_GRID_ROWS
+        def chunks(lst, n):
+            for k in range(0, len(lst), n):
+                yield lst[k:k+n]
+        page_idx = 1
+        for batch in chunks(sheet_images_front, cards_per_sheet):
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Front {page_idx}', fonts=fonts)
+            out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_front.png')
+            try:
+                page.save(out_path)
+                print('Saved', out_path)
+            except Exception as e:
+                print('Fehler speichern sheet front:', e)
+            page_idx += 1
+        page_idx = 1
+        for batch in chunks(sheet_images_back, cards_per_sheet):
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Back {page_idx}', fonts=fonts)
+            out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_back.png')
+            try:
+                page.save(out_path)
+                print('Saved', out_path)
+            except Exception as e:
+                print('Fehler speichern sheet back:', e)
+            page_idx += 1
 
     print('Fertig. Bilder erzeugt/gespeichert:', saved)
 
