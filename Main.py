@@ -81,6 +81,8 @@ def split_blocks(text):
 # robuster Front/Back-Extractor
 def extract_front_back(block):
     b = unicodedata.normalize('NFC', block)
+    # Normalisiere Zeilenumbrüche, damit Regex mit ^|\n robust greift
+    b = b.replace('\r\n', '\n').replace('\r', '\n')
     # 1) direkt 'Rückseite' Varianten (mit oder ohne Umlaut, mit/ohne Colon)
     m = re.search(r'(?mi)(?:^|\n)\s*(r(?:ü|u|ue)ckseite)\s*:?\s*', b)
     if m:
@@ -93,8 +95,21 @@ def extract_front_back(block):
         a,c = b.split('\n===\n',1)
         a = re.sub(r'(?is)^\s*vorderseite\s*:\s*','', a).strip()
         return a.strip(), c.strip()
-    # 3) try to find last <h4> or last <p> and assume everything after it is back (best-effort)
-    # (This is a second-level fallback; often unnecessary)
+    # 3) Fallback: Split am "Erklärung"-Heading, falls vorhanden
+    m2 = re.search(r'(?is)<h4[^>]*>.*?erkl(?:ä|a)rung.*?</h4>', b)
+    if m2:
+        front = b[:m2.start()].strip()
+        back  = b[m2.start():].strip()
+        front = re.sub(r'(?is)^\s*vorderseite\s*:\s*','', front).strip()
+        return front, back
+    # 4) Fallback: Wenn es mindestens zwei <h4>-Blöcke gibt, trenne am zweiten
+    h4_iter = list(re.finditer(r'(?is)<h4[^>]*>.*?</h4>', b))
+    if len(h4_iter) >= 2:
+        split_at = h4_iter[1].start()
+        front = b[:split_at].strip()
+        back  = b[split_at:].strip()
+        front = re.sub(r'(?is)^\s*vorderseite\s*:\s*','', front).strip()
+        return front, back
     # final fallback: treat whole block as front
     front = re.sub(r'(?is)^\s*vorderseite\s*:\s*','', b).strip()
     return front, ''
