@@ -217,7 +217,7 @@ def render_front(struct, idx, fonts):
             w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
             y += int(h * 1.1)
-        y += 20
+        y += 40
     if struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
             prefix = f"{i}. "
@@ -227,7 +227,7 @@ def render_front(struct, idx, fonts):
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
                 _, h = measure_text(draw, txt, body_font)
                 y += int(h * 1.2)
-            y += 12
+            y += 22
     else:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
@@ -235,7 +235,7 @@ def render_front(struct, idx, fonts):
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
                 _, h = measure_text(draw, ln, body_font)
                 y += int(h * 1.2)
-            y += 18
+            y += 22
     footer = f'Karte {idx} - Front'
     fw, fh = measure_text(draw, footer, small_font)
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
@@ -252,7 +252,7 @@ def render_back(struct, idx, fonts):
             w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
             y += int(h * 1.1)
-        y += 18
+        y += 40
     if struct['paragraphs']:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
@@ -260,7 +260,7 @@ def render_back(struct, idx, fonts):
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
                 _, h = measure_text(draw, ln, body_font)
                 y += int(h * 1.2)
-            y += 18
+            y += 22
     elif struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
             wrapped = wrap_by_width(draw, b, body_font, content_w-80)
@@ -269,7 +269,7 @@ def render_back(struct, idx, fonts):
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
                 _, h = measure_text(draw, txt, body_font)
                 y += int(h * 1.2)
-            y += 12
+            y += 22
     else:
         draw.text((x, y+40), "(keine Erklärung gefunden)", font=body_font, fill=(160,160,160))
     footer = f'Karte {idx} - Back'
