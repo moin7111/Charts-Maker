@@ -29,6 +29,9 @@ A4_H_PX = int(210 * MM_TO_INCH * DPI)
 IMG_SIZE = (A4_W_PX, A4_H_PX)
 MARGIN = int(16 * MM_TO_INCH * DPI)
 
+# Basisverzeichnis (funktioniert in Pythonista, Skript und REPL)
+BASE_DIR = os.path.dirname(__file__) if '__file__' in globals() else os.getcwd()
+
 # ====== Utilities ======
 def sanitize_text(s):
     if not s: return s
@@ -73,18 +76,30 @@ def extract_front_back(block):
 def parse_card_html_like(text):
     if not text: return {'title':'', 'bullets':[], 'paragraphs':[]}
     t = text.replace('\r\n','\n').replace('\r','\n')
+    # ersetze <br> zu Zeilenumbrüchen vor dem Tag-Strip
+    t = re.sub(r'(?is)<br\s*/?>', '\n', t)
     t = sanitize_text(t)
     title = ''
     bullets = []
     paras = []
     m = re.search(r'(?is)<h4[^>]*>(.*?)</h4>', t)
-    if m: title = strip_tags(m.group(1))
-    m2 = re.search(r'(?is)<ol[^>]*>(.*?)</ol>', t)
-    if m2:
-        items = re.findall(r'(?is)<li[^>]*>(.*?)</li>', m2.group(1))
-        bullets = [strip_tags(it) for it in items]
+    if m:
+        title = strip_tags(m.group(1))
+    # Sammle OL/UL Listenpunkte
+    lists_content = re.findall(r'(?is)<ol[^>]*>(.*?)</ol>|<ul[^>]*>(.*?)</ul>', t)
+    for ol_content, ul_content in lists_content:
+        content = ol_content if ol_content is not None and ol_content != '' else ul_content
+        if content:
+            items = re.findall(r'(?is)<li[^>]*>(.*?)</li>', content)
+            for it in items:
+                bullets.append(strip_tags(it))
+    # Paragraphen sammeln (jeder <p> kann \n enthalten, diese als einzelne Zeilen behandeln)
     paras_raw = re.findall(r'(?is)<p[^>]*>(.*?)</p>', t)
-    paras = [strip_tags(p) for p in paras_raw]
+    tmp = []
+    for p in paras_raw:
+        stripped = strip_tags(p)
+        tmp.extend([ln.strip() for ln in stripped.split('\n') if ln.strip()])
+    paras = tmp
     if not title and not bullets and not paras:
         plain = strip_tags(t)
         parts = [p.strip() for p in re.split(r'\n\s*\n', plain) if p.strip()]
@@ -96,6 +111,17 @@ def parse_card_html_like(text):
                 paras = parts
         else:
             paras = [plain]
+    # Markdown/Plaintext Bullets als Fallback erkennen, falls noch keine bullets
+    if not bullets:
+        lines = [ln for para in paras for ln in para.split('\n') if ln.strip()]
+        md_bullets = []
+        for ln in lines:
+            mdb = re.match(r'^\s*([-*•]|\d+[\.)])\s+(.*)$', ln)
+            if mdb:
+                md_bullets.append(mdb.group(2).strip())
+        if len(md_bullets) >= 2:
+            bullets = md_bullets
+            paras = []
     title = sanitize_text(strip_tags(title))
     bullets = [sanitize_text(b) for b in bullets]
     paras = [sanitize_text(p) for p in paras]
@@ -112,8 +138,22 @@ def load_truetype_or_none(size):
                 return ImageFont.truetype(p, size)
             except Exception as e:
                 print('TTF konnte nicht geladen werden von', p, 'Fehler:', e)
-    # try common system paths
-    candidates = ['/System/Library/Fonts/Helvetica.ttc','/System/Library/Fonts/HelveticaNeue.ttc','/Library/Fonts/Arial.ttf']
+    # try common system paths (macOS, Windows, Linux)
+    candidates = [
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/System/Library/Fonts/HelveticaNeue.ttc',
+        '/Library/Fonts/Arial.ttf',
+        'C:\\Windows\\Fonts\\arial.ttf',
+        'C:\\Windows\\Fonts\\Arial.ttf',
+        'C:\\Windows\\Fonts\\SegoeUI.ttf',
+        'C:\\Windows\\Fonts\\Tahoma.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Book.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+    ]
     for c in candidates:
         try:
             if os.path.exists(c):
@@ -123,6 +163,16 @@ def load_truetype_or_none(size):
     # not available -> return None
     return None
 
+def measure_text(draw, text, font):
+    try:
+        bbox = draw.textbbox((0,0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    except Exception:
+        try:
+            return draw.textsize(text, font=font)
+        except Exception:
+            return (len(text) * (getattr(font, 'size', 10)), getattr(font, 'size', 10))
+
 def wrap_by_width(draw, text, font, max_w):
     words = text.split()
     if not words: return ['']
@@ -130,13 +180,12 @@ def wrap_by_width(draw, text, font, max_w):
     cur = words[0]
     for w in words[1:]:
         test = cur + ' ' + w
-        try:
-            w_px = draw.textbbox((0,0), test, font=font)[2]
-        except Exception:
-            w_px = draw.textsize(test, font=font)[0]
-        if w_px <= max_w: cur = test
+        w_px, _ = measure_text(draw, test, font)
+        if w_px <= max_w:
+            cur = test
         else:
-            lines.append(cur); cur = w
+            lines.append(cur)
+            cur = w
     lines.append(cur)
     return lines
 
@@ -149,9 +198,9 @@ def render_front(struct, idx, fonts):
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
         for ln in lines:
-            w = draw.textbbox((0,0), ln, font=title_font)[2]
+            w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(draw.textbbox((0,0), ln, font=title_font)[3] * 1.1)
+            y += int(h * 1.1)
         y += 20
     if struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
@@ -160,18 +209,19 @@ def render_front(struct, idx, fonts):
             for j, ln in enumerate(wrapped):
                 txt = prefix + ln if j==0 else ' ' * len(prefix) + ln
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), txt, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, txt, body_font)
+                y += int(h * 1.2)
             y += 12
     else:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), ln, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, ln, body_font)
+                y += int(h * 1.2)
             y += 18
     footer = f'Karte {idx} - Front'
-    fw = draw.textbbox((0,0), footer, font=small_font)[2]
-    fh = draw.textbbox((0,0), footer, font=small_font)[3]
+    fw, fh = measure_text(draw, footer, small_font)
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
     return img
 
@@ -183,16 +233,17 @@ def render_back(struct, idx, fonts):
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
         for ln in lines:
-            w = draw.textbbox((0,0), ln, font=title_font)[2]
+            w, h = measure_text(draw, ln, title_font)
             draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(draw.textbbox((0,0), ln, font=title_font)[3] * 1.1)
+            y += int(h * 1.1)
         y += 18
     if struct['paragraphs']:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
                 draw.text((x,y), ln, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), ln, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, ln, body_font)
+                y += int(h * 1.2)
             y += 18
     elif struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
@@ -200,25 +251,29 @@ def render_back(struct, idx, fonts):
             for j, ln in enumerate(wrapped):
                 txt = (f'{i}. ' + ln) if j==0 else (' ' * 4 + ln)
                 draw.text((x,y), txt, font=body_font, fill=(30,30,30))
-                y += int(draw.textbbox((0,0), txt, font=body_font)[3] * 1.2)
+                _, h = measure_text(draw, txt, body_font)
+                y += int(h * 1.2)
             y += 12
     else:
         draw.text((x, y+40), "(keine Erklärung gefunden)", font=body_font, fill=(160,160,160))
     footer = f'Karte {idx} - Back'
-    fw = draw.textbbox((0,0), footer, font=small_font)[2]
-    fh = draw.textbbox((0,0), footer, font=small_font)[3]
+    fw, fh = measure_text(draw, footer, small_font)
     draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
     return img
 
 # ====== Main ======
 def main():
     print('Start...')
-    if not os.path.exists(INPUT_FILE):
-        print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen.'); return
+    # Pfade robust auflösen
+    input_path = INPUT_FILE if os.path.isabs(INPUT_FILE) else os.path.join(BASE_DIR, INPUT_FILE)
+    output_dir = OUTPUT_FOLDER if os.path.isabs(OUTPUT_FOLDER) else os.path.join(BASE_DIR, OUTPUT_FOLDER)
+    if not os.path.exists(input_path):
+        print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen. Pfad versucht:', input_path); return
+    os.makedirs(output_dir, exist_ok=True)
     if not PIL_AVAILABLE:
         print('Pillow nicht verfügbar. Bitte Pillow in Pythonista installieren.'); return
 
-    raw = read_raw(INPUT_FILE)
+    raw = read_raw(input_path)
     blocks = split_blocks(raw)
     cards = [extract_front_back(b) for b in blocks]
     print('Gefundene Karten:', len(cards))
@@ -250,7 +305,7 @@ def main():
             if UI_AVAILABLE:
                 buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
             else:
-                p = os.path.join(OUTPUT_FOLDER, f'card_{i:02d}_front.png'); img_f.save(p); print('Saved',p)
+                p = os.path.join(output_dir, f'card_{i:02d}_front.png'); img_f.save(p); print('Saved',p)
             saved += 1
         except Exception as e:
             print('Fehler speichern front:', e)
@@ -263,7 +318,7 @@ def main():
             if UI_AVAILABLE:
                 buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
             else:
-                p = os.path.join(OUTPUT_FOLDER, f'card_{i:02d}_back.png'); img_b.save(p); print('Saved',p)
+                p = os.path.join(output_dir, f'card_{i:02d}_back.png'); img_b.save(p); print('Saved',p)
             saved += 1
         except Exception as e:
             print('Fehler speichern back:', e)
