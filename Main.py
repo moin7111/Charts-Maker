@@ -55,6 +55,9 @@ TITLE_TEXT_COLOR = (255, 255, 255)    # Weiß in der Kopfzeile
 BODY_TEXT_COLOR = (28, 28, 30)        # fast schwarz
 MUTED_TEXT_COLOR = (120, 120, 120)    # Footer/Hinweise
 
+# Abstand zwischen Kopfzeile (Titelbalken) und Fließtext
+TITLE_BODY_GAP = 60
+
 # ====== Utilities ======
 def sanitize_text(s):
     if not s: return s
@@ -148,6 +151,22 @@ def parse_card_html_like(text):
     title = sanitize_text(strip_tags(title))
     bullets = [sanitize_text(b) for b in bullets]
     paras = [sanitize_text(p) for p in paras]
+    # Fallback: Wenn ein Titel vorhanden ist, aber weder Absätze noch Bullets erkannt wurden,
+    # versuche den restlichen Inhalt ohne <h4>-Block erneut zu parsen bzw. als Plaintext zu übernehmen.
+    if title and not bullets and not paras:
+        body_only = re.sub(r'(?is)<h4[^>]*>.*?</h4>', '', t).strip()
+        paras_raw = re.findall(r'(?is)<p[^>]*>(.*?)</p>', body_only)
+        tmp = []
+        for p in paras_raw:
+            stripped = strip_tags(p)
+            parts = [ln.strip() for ln in stripped.split('\n') if ln.strip()]
+            tmp.extend(parts)
+        if tmp:
+            paras = [sanitize_text(p) for p in tmp]
+        else:
+            plain = strip_tags(body_only).strip()
+            if plain:
+                paras = [sanitize_text(p) for p in re.split(r'\n\s*\n', plain) if p.strip()] or [sanitize_text(plain)]
     return {'title':title, 'bullets':bullets, 'paragraphs':paras}
 
 # ====== Font loader with clear fallback ======
@@ -234,7 +253,7 @@ def render_front(struct, idx, fonts):
         for ln, w, h in tmp_sizes:
             draw.text(((IMG_SIZE[0]-w)//2, cur_y), ln, font=title_font, fill=TITLE_TEXT_COLOR)
             cur_y += int(h*1.1)
-    y = header_h + 40
+    y = header_h + TITLE_BODY_GAP
     if struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
             prefix = f"{i}. "
@@ -279,7 +298,7 @@ def render_back(struct, idx, fonts):
         for ln, w, h in tmp_sizes:
             draw.text(((IMG_SIZE[0]-w)//2, cur_y), ln, font=title_font, fill=TITLE_TEXT_COLOR)
             cur_y += int(h*1.1)
-    y = header_h + 40
+    y = header_h + TITLE_BODY_GAP
     if struct['paragraphs']:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
