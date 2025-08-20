@@ -48,6 +48,13 @@ SHEET_PAGE_SIZE = IMG_SIZE  # für Konsistenz: gleiche Seitengröße wie Einzelk
 SINGLE_SUBDIR = 'single'
 SHEETS_SUBDIR = 'sheets'
 
+# Designfarben (sanftes, modernes Layout)
+BACKGROUND_COLOR = (248, 249, 252)   # leichtes Off-White
+ACCENT_COLOR = (35, 99, 221)          # Blau für Kopfzeile
+TITLE_TEXT_COLOR = (255, 255, 255)    # Weiß in der Kopfzeile
+BODY_TEXT_COLOR = (28, 28, 30)        # fast schwarz
+MUTED_TEXT_COLOR = (120, 120, 120)    # Footer/Hinweise
+
 # ====== Utilities ======
 def sanitize_text(s):
     if not s: return s
@@ -207,24 +214,34 @@ def wrap_by_width(draw, text, font, max_w):
 
 # ====== Renderer (uses truetype if available; if not, prints instructions) ======
 def render_front(struct, idx, fonts):
-    img = Image.new('RGB', IMG_SIZE, 'white'); draw = ImageDraw.Draw(img)
+    img = Image.new('RGB', IMG_SIZE, BACKGROUND_COLOR); draw = ImageDraw.Draw(img)
     title_font, body_font, small_font = fonts
     x, y = MARGIN, MARGIN
     content_w = IMG_SIZE[0] - 2*MARGIN
+    # Kopfzeile
+    header_h = max(120, int(IMG_SIZE[1] * 0.22))
+    draw.rectangle([0,0, IMG_SIZE[0], header_h], fill=ACCENT_COLOR)
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
+        ty = int(header_h/2)
+        total_h = 0
+        tmp_sizes = []
         for ln in lines:
             w, h = measure_text(draw, ln, title_font)
-            draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(h * 1.1)
-        y += 40
+            tmp_sizes.append((ln,w,h))
+            total_h += int(h*1.1)
+        cur_y = ty - total_h//2
+        for ln, w, h in tmp_sizes:
+            draw.text(((IMG_SIZE[0]-w)//2, cur_y), ln, font=title_font, fill=TITLE_TEXT_COLOR)
+            cur_y += int(h*1.1)
+    y = header_h + 40
     if struct['bullets']:
         for i,b in enumerate(struct['bullets'], start=1):
             prefix = f"{i}. "
             wrapped = wrap_by_width(draw, b, body_font, content_w-80)
             for j, ln in enumerate(wrapped):
                 txt = prefix + ln if j==0 else ' ' * len(prefix) + ln
-                draw.text((x,y), txt, font=body_font, fill=(30,30,30))
+                draw.text((x,y), txt, font=body_font, fill=BODY_TEXT_COLOR)
                 _, h = measure_text(draw, txt, body_font)
                 y += int(h * 1.2)
             y += 22
@@ -232,32 +249,42 @@ def render_front(struct, idx, fonts):
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
-                draw.text((x,y), ln, font=body_font, fill=(30,30,30))
+                draw.text((x,y), ln, font=body_font, fill=BODY_TEXT_COLOR)
                 _, h = measure_text(draw, ln, body_font)
                 y += int(h * 1.2)
             y += 22
     footer = f'Karte {idx} - Front'
     fw, fh = measure_text(draw, footer, small_font)
-    draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
+    draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=MUTED_TEXT_COLOR)
     return img
 
 def render_back(struct, idx, fonts):
-    img = Image.new('RGB', IMG_SIZE, 'white'); draw = ImageDraw.Draw(img)
+    img = Image.new('RGB', IMG_SIZE, BACKGROUND_COLOR); draw = ImageDraw.Draw(img)
     title_font, body_font, small_font = fonts
     x,y = MARGIN, MARGIN
     content_w = IMG_SIZE[0] - 2*MARGIN
+    # Kopfzeile
+    header_h = max(120, int(IMG_SIZE[1] * 0.22))
+    draw.rectangle([0,0, IMG_SIZE[0], header_h], fill=ACCENT_COLOR)
     if struct['title']:
         lines = wrap_by_width(draw, struct['title'], title_font, content_w)
+        ty = int(header_h/2)
+        total_h = 0
+        tmp_sizes = []
         for ln in lines:
             w, h = measure_text(draw, ln, title_font)
-            draw.text(((IMG_SIZE[0]-w)//2, y), ln, font=title_font, fill=(10,10,10))
-            y += int(h * 1.1)
-        y += 40
+            tmp_sizes.append((ln,w,h))
+            total_h += int(h*1.1)
+        cur_y = ty - total_h//2
+        for ln, w, h in tmp_sizes:
+            draw.text(((IMG_SIZE[0]-w)//2, cur_y), ln, font=title_font, fill=TITLE_TEXT_COLOR)
+            cur_y += int(h*1.1)
+    y = header_h + 40
     if struct['paragraphs']:
         for p in struct['paragraphs']:
             wrapped = wrap_by_width(draw, p, body_font, content_w)
             for ln in wrapped:
-                draw.text((x,y), ln, font=body_font, fill=(30,30,30))
+                draw.text((x,y), ln, font=body_font, fill=BODY_TEXT_COLOR)
                 _, h = measure_text(draw, ln, body_font)
                 y += int(h * 1.2)
             y += 22
@@ -266,15 +293,16 @@ def render_back(struct, idx, fonts):
             wrapped = wrap_by_width(draw, b, body_font, content_w-80)
             for j, ln in enumerate(wrapped):
                 txt = (f'{i}. ' + ln) if j==0 else (' ' * 4 + ln)
-                draw.text((x,y), txt, font=body_font, fill=(30,30,30))
+                draw.text((x,y), txt, font=body_font, fill=BODY_TEXT_COLOR)
                 _, h = measure_text(draw, txt, body_font)
                 y += int(h * 1.2)
             y += 22
     else:
-        draw.text((x, y+40), "(keine Erklärung gefunden)", font=body_font, fill=(160,160,160))
+        # Auf der Rückseite immer ein Hinweis anzeigen – hier etwas prominenter
+        draw.text((x, y+40), "(keine Erklärung gefunden)", font=body_font, fill=MUTED_TEXT_COLOR)
     footer = f'Karte {idx} - Back'
     fw, fh = measure_text(draw, footer, small_font)
-    draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=(120,120,120))
+    draw.text((IMG_SIZE[0]-MARGIN-fw, IMG_SIZE[1]-MARGIN-fh), footer, font=small_font, fill=MUTED_TEXT_COLOR)
     return img
 
 def compose_sheet(images, page_size, grid_cols, grid_rows, cell_margin, footer_text=None, fonts=None):
@@ -326,7 +354,9 @@ def main():
     if GENERATE_SHEETS:
         os.makedirs(sheets_dir, exist_ok=True)
     if not PIL_AVAILABLE:
-        print('Pillow nicht verfügbar. Bitte Pillow in Pythonista installieren.'); return
+        # Hinweis präziser gestalten, damit Nutzer schnell handeln kann
+        print('Pillow (PIL) ist nicht verfügbar. Bitte installiere Pillow, z.B. via apt: sudo apt-get install -y python3-pil');
+        return
 
     raw = read_raw(input_path)
     blocks = split_blocks(raw)
@@ -334,7 +364,7 @@ def main():
     print('Gefundene Karten:', len(cards))
 
     # Load fonts: try TTF; if not available, abort with instruction
-    title_size = 140; body_size = 56; small_size = 20
+    title_size = 128; body_size = 54; small_size = 22
     tt_title = load_truetype_or_none(title_size)
     tt_body  = load_truetype_or_none(body_size)
     tt_small = load_truetype_or_none(small_size)
