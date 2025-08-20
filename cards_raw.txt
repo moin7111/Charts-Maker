@@ -1,0 +1,82 @@
+Vorderseite:
+<h4><b>Thema: Zentralistische Planwirtschaft</b></h4>
+<ol>
+<li>Was ist das Hauptmerkmal der sowjetischen Planwirtschaft?</li>
+<li>Welches Ziel sollte durch die staatliche Kontrolle über Ressourcen erreicht werden?</li>
+<li>Im Gegensatz zu welchem Wirtschaftssystem stand die Planwirtschaft?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Zentralistische Planwirtschaft</b></h4>
+<p>Im Sowjetkommunismus (1917–1991) wurde die Wirtschaft nicht durch den freien Markt, sondern zentral vom Staat gelenkt. Dieser besaß und kontrollierte alle wichtigen <b>Produktionsmittel</b> (Fabriken, Land, Rohstoffe). Das Hauptziel dieser <b>zentralistischen Planwirtschaft</b> war es, eine als gerecht empfundene Verteilung des Wohlstands für alle Bürger zu gewährleisten. Dieses System stand im direkten Gegensatz zur liberalen <b>Marktwirtschaft</b> westlicher Länder.</p>
+---
+Vorderseite:
+<h4><b>Thema: Kollektivierung</b></h4>
+<ol>
+<li>Was versteht man unter der Kollektivierung der Landwirtschaft?</li>
+<li>Was passierte dabei mit privaten Bauernhöfen?</li>
+<li>Welches offizielle Ziel wurde damit verfolgt?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Kollektivierung</b></h4>
+<p>Die Kollektivierung war ein zentraler Prozess, besonders unter Stalin ab den späten 1920er Jahren. Dabei wurde die private Landwirtschaft abgeschafft. Bauernhöfe wurden zwangsweise zu großen <b>Kollektivbetrieben</b> (sogenannten Kolchosen) zusammengelegt. Das offizielle Ziel war eine Effizienzsteigerung der landwirtschaftlichen Produktion, um die wachsende Industrie und die Städte zu versorgen. In der Praxis führte dies oft zu brutalem Widerstand, Hungersnöten und dem Verlust von Millionen Menschenleben.</p>
+---
+Vorderseite:
+<h4><b>Thema: Antikapitalismus</b></h4>
+<ol>
+<li>Wie stellte die sowjetische Ideologie den Kapitalismus dar?</li>
+<li>Was war das Endziel der Überwindung der gesellschaftlichen Klassen?</li>
+<li>Welche Werte standen im Widerspruch zu dieser Ideologie?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Antikapitalismus</b></h4>
+<p>Der Antikapitalismus war ein ideologisches Fundament des Sowjetkommunismus. Der Kapitalismus wurde als ausbeuterisch und ungerecht dargestellt. Durch antikapitalistische Rhetorik und Politik sollten gesellschaftliche Klassenunterschiede beseitigt werden, um eine <b>klassenlose Gesellschaft</b> zu schaffen. Dies stand im direkten Widerspruch zu den Prinzipien der individuellen wirtschaftlichen <b>Freiheit</b> und des Privateigentums, die im sowjetischen System abgeschafft wurden.</p>
+---
+Vorderseite:
+<h4><b>Thema: Totalitarismus</b></h4>
+<ol>
+<li>Was beanspruchte der Staat im Totalitarismus für sich?</li>
+<li>Wie wurde mit politischer Opposition umgegangen?</li>
+<li>Welche Art von Regime beschreibt der Totalitarismus?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Totalitarismus</b></h4>
+<p>Die Sowjetunion war ein totalitärer Staat. Das bedeutet, der Staat unter der Führung der Kommunistischen Partei beanspruchte das alleinige <b>Monopol auf politische Macht und ideologische Kontrolle</b>. Es gab keine Toleranz für politische Opposition oder abweichende Meinungen; diese wurden systematisch unterdrückt (z.B. durch Geheimpolizei, Zensur und Propaganda). Dieses System wird als <b>autoritäres Regime</b> bezeichnet, in dem die Freiheiten des Einzelnen stark eingeschränkt sind.</p>
+---
+Vorderseite:
+<h4><b>Thema: Marxismus-Leninismus</b></h4>
+<ol>
+<li>Welche Rolle spielte der Marxismus-Leninismus in der Sowjetunion?</li>
+<li>Was bedeutet der Begriff „demokratischer Zentralismus“ in der Praxis?</li>
+<li>Was war das Ziel des internationalen Klassenkampfes?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Marxismus-Leninismus</b></h4>
+<p>Der Marxismus-Leninismus war von 1917 bis 1991 die offizielle <b>Staatsdoktrin</b> der Sowjetunion. Es handelte sich um eine von Lenin weiterentwickelte Form des Marxismus. Ein Schlüsselprinzip war der <b>„demokratische Zentralismus“</b>: Entscheidungen der Parteiführung waren für alle bindend und mussten ohne Widerrede umgesetzt werden, was jegliche parteiinterne Demokratie unterband. Die Ideologie propagierte zudem einen <b>internationalen Klassenkampf</b>, bei dem sich die Arbeiter aller Länder gegen den Kapitalismus vereinen sollten.</p>
+---
+Vorderseite:
+<h4><b>Thema: Soziale Gleichheit</b></h4>
+<ol>
+<li>Wodurch sollte soziale Gleichheit erreicht werden?</li>
+<li>Welchen Status hatten Bildung und Gesundheitsversorgung?</li>
+<li>Wer war für die Garantie dieser Leistungen verantwortlich?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Soziale Gleichheit</b></h4>
+<p>Ein zentrales Versprechen des Sowjetkommunismus war die Herstellung von sozialer Gleichheit. Dies sollte durch die <b>Umverteilung</b> von Reichtum und Ressourcen von den ehemals Reichen auf die gesamte Gesellschaft erfolgen. Grundlegende Dienstleistungen wie <b>Bildung und Gesundheitsversorgung</b> wurden als Rechte für alle Bürger betrachtet, die der Staat kostenlos garantieren musste. Dies war ein wesentlicher Bestandteil der sozialen Legitimation des Systems.</p>
+---
+Vorderseite:
+<h4><b>Thema: Industrielle Modernisierung</b></h4>
+<ol>
+<li>Was waren die Hauptziele der industriellen Modernisierung?</li>
+<li>Auf wessen Kosten wurde diese Entwicklung vorangetrieben?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Industrielle Modernisierung</b></h4>
+<p>Besonders ab den späten 1920er Jahren unter Stalin betrieb die Sowjetunion eine rücksichtslose und beschleunigte industrielle Modernisierung. Ziel war es, schnell <b>wirtschaftliche Unabhängigkeit</b> vom Westen zu erlangen und <b>militärische Stärke</b> aufzubauen. Diese Industrialisierung, die oft in Fünfjahresplänen organisiert wurde, erfolgte jedoch auf Kosten der Umwelt und des <b>Wohlergehens der Arbeiterinnen und Arbeiter</b>, die unter extrem harten Bedingungen arbeiten mussten.</p>
