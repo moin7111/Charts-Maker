@@ -41,7 +41,7 @@ SAVE_SINGLES_TO_PHOTOS = True   # wirkt nur, wenn Pythonista/"photos" verfügbar
 GENERATE_SHEETS = True
 SHEET_GRID_COLS = 2
 SHEET_GRID_ROWS = 2
-SHEET_CELL_MARGIN = int(5 * MM_TO_INCH * DPI)   # Innenabstand pro Zelle
+SHEET_CELL_MARGIN = 0   # Kein Innenabstand - Karten grenzen direkt aneinander
 SHEET_PAGE_SIZE = IMG_SIZE  # für Konsistenz: gleiche Seitengröße wie Einzelkarten
 
 # Unterordner für getrennte Speicherung
@@ -345,6 +345,18 @@ def compose_sheet(images, page_size, grid_cols, grid_rows, cell_margin, footer_t
     draw = ImageDraw.Draw(page)
     cell_w = page_size[0] // grid_cols
     cell_h = page_size[1] // grid_rows
+    
+    # Zeichne Schnittlinien für einfaches Ausschneiden
+    # Vertikale Linien
+    for i in range(1, grid_cols):
+        x = i * cell_w
+        draw.line([(x, 0), (x, page_size[1])], fill=(200, 200, 200), width=1)
+    
+    # Horizontale Linien
+    for i in range(1, grid_rows):
+        y = i * cell_h
+        draw.line([(0, y), (page_size[0], y)], fill=(200, 200, 200), width=1)
+    
     for idx, img in enumerate(images):
         if idx >= grid_cols * grid_rows:
             break
@@ -365,21 +377,156 @@ def compose_sheet(images, page_size, grid_cols, grid_rows, cell_margin, footer_t
         off_x = x0 + (target_w - new_w)//2
         off_y = y0 + (target_h - new_h)//2
         page.paste(resized, (off_x, off_y))
+    
+    # Footer ohne margin am unteren Rand platzieren
     if footer_text and fonts:
         _, _, small_font = fonts
         w, h = measure_text(draw, footer_text, small_font)
-        draw.text((page_size[0]-MARGIN-w, page_size[1]-MARGIN-h), footer_text, font=small_font, fill=(120,120,120))
+        draw.text((page_size[0]-w-10, page_size[1]-h-10), footer_text, font=small_font, fill=(120,120,120))
     return page
 
-# ====== Main ======
-def main():
-    print('Start...')
-    # Pfade robust auflösen
-    input_path = INPUT_FILE if os.path.isabs(INPUT_FILE) else os.path.join(BASE_DIR, INPUT_FILE)
+# ====== UI View (nur wenn UI verfügbar) ======
+class CardGeneratorView(ui.View):
+    def __init__(self):
+        self.name = 'Lernkarten Generator'
+        self.background_color = 'white'
+        
+        # Hauptcontainer
+        self.scroll_view = ui.ScrollView(frame=(0, 0, self.width, self.height))
+        self.scroll_view.flex = 'WH'
+        self.add_subview(self.scroll_view)
+        
+        # Title
+        title_label = ui.Label(frame=(10, 10, self.width-20, 40))
+        title_label.text = 'Lernkarten Generator'
+        title_label.font = ('HelveticaNeue-Medium', 24)
+        title_label.alignment = ui.ALIGN_CENTER
+        self.scroll_view.add_subview(title_label)
+        
+        # Anleitung
+        instruction_label = ui.Label(frame=(10, 60, self.width-20, 260))
+        instruction_label.text = '''📋 FORMATIERUNG FÜR KARTENEINGABE:
+
+✅ STRUKTUR:
+• Jede Karte wird durch drei Bindestriche (---) auf einer eigenen Zeile getrennt
+• Jede Karte besteht aus "Vorderseite:" und "Rückseite:" Abschnitten
+• HTML-Tags werden unterstützt für Formatierung
+
+✅ VORDERSEITE FORMAT:
+Vorderseite:
+<h4><b>Thema: [Ihr Thema]</b></h4>
+<ol>
+  <li>[Frage 1]</li>
+  <li>[Frage 2]</li>
+  <li>[Frage 3]</li>
+</ol>
+
+✅ RÜCKSEITE FORMAT:
+Rückseite:
+<h4><b>Erklärung: [Ihr Thema]</b></h4>
+<p>[Erklärungstext mit <b>wichtigen Begriffen</b> in Fettschrift]</p>
+---
+
+⚠️ WICHTIG:
+• "Vorderseite:" und "Rückseite:" müssen am Zeilenanfang stehen
+• Keine Leerzeichen vor "Vorderseite:" oder "Rückseite:"
+• HTML-Tags müssen korrekt geschlossen werden
+• Verwenden Sie <b> für Fettschrift, <ol>/<ul> für Listen'''
+        instruction_label.font = ('Menlo', 10)
+        instruction_label.number_of_lines = 0
+        instruction_label.text_color = '#444444'
+        self.scroll_view.add_subview(instruction_label)
+        
+        # Cards Raw Text Input
+        cards_label = ui.Label(frame=(10, 330, self.width-20, 30))
+        cards_label.text = 'Karteneingabe (Text):'
+        cards_label.font = ('HelveticaNeue-Medium', 16)
+        self.scroll_view.add_subview(cards_label)
+        
+        self.cards_text = ui.TextView(frame=(10, 365, self.width-20, 300))
+        self.cards_text.font = ('Menlo', 12)
+        self.cards_text.border_width = 1
+        self.cards_text.border_color = '#CCCCCC'
+        self.cards_text.corner_radius = 5
+        # Beispieltext einfügen
+        self.cards_text.text = '''Vorderseite:
+<h4><b>Thema: Beispielthema</b></h4>
+<ol>
+<li>Was ist die erste Frage?</li>
+<li>Was ist die zweite Frage?</li>
+<li>Was ist die dritte Frage?</li>
+</ol>
+
+Rückseite:
+<h4><b>Erklärung: Beispielthema</b></h4>
+<p>Hier kommt die Erklärung mit <b>wichtigen Begriffen</b> in Fettschrift.</p>
+---'''
+        self.scroll_view.add_subview(self.cards_text)
+        
+        # Shortcut Input
+        shortcut_label = ui.Label(frame=(10, 675, self.width-20, 30))
+        shortcut_label.text = 'Shortcuts (optional):'
+        shortcut_label.font = ('HelveticaNeue-Medium', 16)
+        self.scroll_view.add_subview(shortcut_label)
+        
+        self.shortcut_text = ui.TextField(frame=(10, 710, self.width-20, 40))
+        self.shortcut_text.font = ('HelveticaNeue', 14)
+        self.shortcut_text.placeholder = 'z.B. Tastenkombinationen oder Notizen'
+        self.shortcut_text.border_width = 1
+        self.shortcut_text.border_color = '#CCCCCC'
+        self.shortcut_text.corner_radius = 5
+        self.scroll_view.add_subview(self.shortcut_text)
+        
+        # Generate Button
+        self.generate_btn = ui.Button(frame=(10, 760, self.width-20, 50))
+        self.generate_btn.title = 'Karten generieren'
+        self.generate_btn.bg_color = '#007AFF'
+        self.generate_btn.tint_color = 'white'
+        self.generate_btn.font = ('HelveticaNeue-Medium', 18)
+        self.generate_btn.corner_radius = 10
+        self.generate_btn.action = self.generate_cards
+        self.scroll_view.add_subview(self.generate_btn)
+        
+        # Status Label
+        self.status_label = ui.Label(frame=(10, 820, self.width-20, 40))
+        self.status_label.text = ''
+        self.status_label.font = ('HelveticaNeue', 14)
+        self.status_label.text_color = '#666666'
+        self.status_label.alignment = ui.ALIGN_CENTER
+        self.status_label.number_of_lines = 0
+        self.scroll_view.add_subview(self.status_label)
+        
+        # Set content size
+        self.scroll_view.content_size = (self.width, 870)
+    
+    def generate_cards(self, sender):
+        self.status_label.text = 'Generiere Karten...'
+        # Den eingegebenen Text verwenden statt der Datei
+        raw_text = self.cards_text.text
+        shortcut_text = self.shortcut_text.text
+        
+        # Temporär den Text in cards_raw speichern (für Kompatibilität)
+        temp_file = os.path.join(BASE_DIR, 'temp_cards_raw.txt')
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            f.write(raw_text)
+        
+        # Main generation logic aufrufen
+        try:
+            generate_from_text(raw_text, shortcut_text)
+            self.status_label.text = 'Karten erfolgreich generiert!'
+        except Exception as e:
+            self.status_label.text = f'Fehler: {str(e)}'
+        finally:
+            # Temp file aufräumen
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+
+# ====== Modified Main logic ======
+def generate_from_text(raw_text, shortcut_text=None):
+    print('Start generation...')
     output_dir = OUTPUT_FOLDER if os.path.isabs(OUTPUT_FOLDER) else os.path.join(BASE_DIR, OUTPUT_FOLDER)
-    if not os.path.exists(input_path):
-        print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen. Pfad versucht:', input_path); return
     os.makedirs(output_dir, exist_ok=True)
+    
     # Separate Ausgabeverzeichnisse
     single_dir = os.path.join(output_dir, SINGLE_SUBDIR)
     sheets_dir = os.path.join(output_dir, SHEETS_SUBDIR)
@@ -387,82 +534,91 @@ def main():
         os.makedirs(single_dir, exist_ok=True)
     if GENERATE_SHEETS:
         os.makedirs(sheets_dir, exist_ok=True)
+    
     if not PIL_AVAILABLE:
-        # Hinweis präziser gestalten, damit Nutzer schnell handeln kann
-        print('Pillow (PIL) ist nicht verfügbar. Bitte installiere Pillow, z.B. via apt: sudo apt-get install -y python3-pil');
-        return
-
-    raw = read_raw(input_path)
-    blocks = split_blocks(raw)
+        print('Pillow (PIL) ist nicht verfügbar. Bitte installiere Pillow, z.B. via apt: sudo apt-get install -y python3-pil')
+        raise Exception('PIL nicht verfügbar')
+    
+    blocks = split_blocks(raw_text)
     cards = [extract_front_back(b) for b in blocks]
     print('Gefundene Karten:', len(cards))
-
-    # Load fonts: try TTF; if not available, abort with instruction
+    
+    # Load fonts
     title_size = 128; body_size = 54; small_size = 22
     tt_title = load_truetype_or_none(title_size)
     tt_body  = load_truetype_or_none(body_size)
     tt_small = load_truetype_or_none(small_size)
     if tt_title is None or tt_body is None:
-        print('Warnung: Keine TrueType-Schrift gefunden. Für optimale Darstellung lege eine TTF (z.B. DejaVuSans.ttf) in den selben Ordner und setze FONT_PATH.')
-        # still allow fallback, but use load_default (may be small)
+        print('Warnung: Keine TrueType-Schrift gefunden.')
         tt_title = ImageFont.load_default()
         tt_body  = ImageFont.load_default()
         tt_small = ImageFont.load_default()
     fonts = (tt_title, tt_body, tt_small)
-
+    
     saved = 0
     sheet_images_front = []
     sheet_images_back = []
+    
     for i, (front_raw, back_raw) in enumerate(cards, start=1):
         front = parse_card_html_like(front_raw)
         back  = parse_card_html_like(back_raw)
-        print(f'Karte {i}: title_front_len={len(front["title"])}, bullets={len(front["bullets"])}, paras_front={len(front["paragraphs"])}, title_back_len={len(back["title"])}, paras_back={len(back["paragraphs"])})')
-
+        print(f'Karte {i}: Processing...')
+        
         try:
             img_f = render_front(front, i, fonts)
         except Exception as e:
-            print('Fehler Front render:', e); continue
+            print('Fehler Front render:', e)
+            continue
+            
         try:
-            # Einzelkarte Front
             if GENERATE_SINGLE:
                 if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
-                    buf = io.BytesIO(); img_f.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    buf = io.BytesIO()
+                    img_f.save(buf,'PNG')
+                    photos.save_image(ui.Image.from_data(buf.getvalue()))
                     print('Saved to Photos (front)', i)
-                p_single = os.path.join(single_dir, f'card_{i:02d}_front.png'); img_f.save(p_single); print('Saved', p_single)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_front.png')
+                img_f.save(p_single)
+                print('Saved', p_single)
                 saved += 1
-            # Für Druckbogen sammeln
             if GENERATE_SHEETS:
                 sheet_images_front.append(img_f)
         except Exception as e:
             print('Fehler speichern front:', e)
-
+        
         try:
             img_b = render_back(back, i, fonts)
         except Exception as e:
-            print('Fehler Back render:', e); continue
+            print('Fehler Back render:', e)
+            continue
+            
         try:
-            # Einzelkarte Back
             if GENERATE_SINGLE:
                 if UI_AVAILABLE and SAVE_SINGLES_TO_PHOTOS:
-                    buf = io.BytesIO(); img_b.save(buf,'PNG'); photos.save_image(ui.Image.from_data(buf.getvalue()))
+                    buf = io.BytesIO()
+                    img_b.save(buf,'PNG')
+                    photos.save_image(ui.Image.from_data(buf.getvalue()))
                     print('Saved to Photos (back)', i)
-                p_single = os.path.join(single_dir, f'card_{i:02d}_back.png'); img_b.save(p_single); print('Saved', p_single)
+                p_single = os.path.join(single_dir, f'card_{i:02d}_back.png')
+                img_b.save(p_single)
+                print('Saved', p_single)
                 saved += 1
-            # Für Druckbogen sammeln
             if GENERATE_SHEETS:
                 sheet_images_back.append(img_b)
         except Exception as e:
             print('Fehler speichern back:', e)
-
+    
     # Druckbögen generieren
     if GENERATE_SHEETS:
         cards_per_sheet = SHEET_GRID_COLS * SHEET_GRID_ROWS
         def chunks(lst, n):
             for k in range(0, len(lst), n):
                 yield lst[k:k+n]
+        
         page_idx = 1
         for batch in chunks(sheet_images_front, cards_per_sheet):
-            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Front {page_idx}', fonts=fonts)
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, 
+                               SHEET_CELL_MARGIN, footer_text=f'Sheet Front {page_idx}', fonts=fonts)
             out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_front.png')
             try:
                 page.save(out_path)
@@ -470,9 +626,11 @@ def main():
             except Exception as e:
                 print('Fehler speichern sheet front:', e)
             page_idx += 1
+            
         page_idx = 1
         for batch in chunks(sheet_images_back, cards_per_sheet):
-            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, SHEET_CELL_MARGIN, footer_text=f'Sheet Back {page_idx}', fonts=fonts)
+            page = compose_sheet(batch, SHEET_PAGE_SIZE, SHEET_GRID_COLS, SHEET_GRID_ROWS, 
+                               SHEET_CELL_MARGIN, footer_text=f'Sheet Back {page_idx}', fonts=fonts)
             out_path = os.path.join(sheets_dir, f'sheet_{page_idx:02d}_back.png')
             try:
                 page.save(out_path)
@@ -480,8 +638,63 @@ def main():
             except Exception as e:
                 print('Fehler speichern sheet back:', e)
             page_idx += 1
-
+    
     print('Fertig. Bilder erzeugt/gespeichert:', saved)
+    return saved
+
+# ====== Main ======
+def main():
+    print('Start...')
+    
+    # Prüfe ob Text über Shortcuts übergeben wurde
+    import sys
+    
+    # Pythonista-spezifisch: Prüfe auch auf appex (Share Sheet)
+    try:
+        import appex
+        if appex.is_running_extension():
+            # Text aus Share Sheet holen
+            cards_text = appex.get_text()
+            if cards_text:
+                print('Text über Share Sheet empfangen, generiere Karten...')
+                try:
+                    generate_from_text(cards_text)
+                    print('Karten erfolgreich generiert!')
+                except Exception as e:
+                    print(f'Fehler beim Generieren: {str(e)}')
+                return
+    except ImportError:
+        pass  # appex nicht verfügbar (nicht in Pythonista)
+    
+    # Wenn Argumente übergeben wurden (z.B. über Shortcuts)
+    if len(sys.argv) > 1:
+        # Der erste Parameter ist der Kartentext
+        cards_text = sys.argv[1]
+        
+        # Optional: zweiter Parameter für Notizen/Shortcuts
+        shortcut_text = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        print('Text über Shortcuts empfangen, generiere Karten...')
+        try:
+            generate_from_text(cards_text, shortcut_text)
+            print('Karten erfolgreich generiert!')
+        except Exception as e:
+            print(f'Fehler beim Generieren: {str(e)}')
+        return
+    
+    # Wenn UI verfügbar ist, GUI zeigen
+    if UI_AVAILABLE:
+        v = CardGeneratorView()
+        v.present('sheet')
+    else:
+        # Fallback auf Datei-basierte Verarbeitung
+        input_path = INPUT_FILE if os.path.isabs(INPUT_FILE) else os.path.join(BASE_DIR, INPUT_FILE)
+        if not os.path.exists(input_path):
+            print('cards_raw.txt nicht gefunden im Ordner. Bitte anlegen. Pfad versucht:', input_path)
+            return
+        
+        raw = read_raw(input_path)
+        generate_from_text(raw)
 
 if __name__ == '__main__':
     main()
