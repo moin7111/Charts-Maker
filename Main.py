@@ -646,6 +646,42 @@ def generate_from_text(raw_text, shortcut_text=None):
 def main():
     print('Start...')
     
+    # Prüfe ob Text über Shortcuts übergeben wurde
+    import sys
+    
+    # Pythonista-spezifisch: Prüfe auch auf appex (Share Sheet)
+    try:
+        import appex
+        if appex.is_running_extension():
+            # Text aus Share Sheet holen
+            cards_text = appex.get_text()
+            if cards_text:
+                print('Text über Share Sheet empfangen, generiere Karten...')
+                try:
+                    generate_from_text(cards_text)
+                    print('Karten erfolgreich generiert!')
+                except Exception as e:
+                    print(f'Fehler beim Generieren: {str(e)}')
+                return
+    except ImportError:
+        pass  # appex nicht verfügbar (nicht in Pythonista)
+    
+    # Wenn Argumente übergeben wurden (z.B. über Shortcuts)
+    if len(sys.argv) > 1:
+        # Der erste Parameter ist der Kartentext
+        cards_text = sys.argv[1]
+        
+        # Optional: zweiter Parameter für Notizen/Shortcuts
+        shortcut_text = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        print('Text über Shortcuts empfangen, generiere Karten...')
+        try:
+            generate_from_text(cards_text, shortcut_text)
+            print('Karten erfolgreich generiert!')
+        except Exception as e:
+            print(f'Fehler beim Generieren: {str(e)}')
+        return
+    
     # Wenn UI verfügbar ist, GUI zeigen
     if UI_AVAILABLE:
         v = CardGeneratorView()
